@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>베이지안 통계 마인드맵</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0d1117;
+  color: #e6edf3;
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+  overflow: hidden;
+}
+button { font: inherit; }
+.link { fill: none; }
+.dependency { fill: none; stroke: #8b949e; stroke-width: 1; stroke-dasharray: 4 5; opacity: 0.38; }
+.panel {
+  position: fixed;
+  z-index: 10;
+  background: rgba(13, 17, 23, 0.94);
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  padding: 14px 16px;
+  color: #e6edf3;
+  font-size: 12px;
+}
+#stats-panel { top: 16px; right: 16px; width: 224px; }
+#stats-panel h3,
+#legend-panel h4 {
+  color: #8b949e;
+  font-size: 11px;
+  font-weight: 600;
+  margin-bottom: 9px;
+  letter-spacing: 0;
+}
+.s-row { display: flex; align-items: center; gap: 6px; margin: 6px 0; }
+.s-name { font-size: 10px; color: #8b949e; width: 72px; flex-shrink: 0; overflow: hidden; white-space: nowrap; }
+.s-bar-bg { flex: 1; height: 4px; background: #21262d; border-radius: 2px; }
+.s-bar { height: 4px; border-radius: 2px; transition: width 0.25s ease; }
+.s-pct { font-size: 10px; width: 28px; text-align: right; flex-shrink: 0; }
+#legend-panel { bottom: 16px; left: 16px; }
+.l-row { display: flex; align-items: center; gap: 8px; margin: 5px 0; font-size: 11px; color: #8b949e; }
+.l-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.l-divider { border-top: 1px solid #21262d; margin: 8px 0; }
+#help {
+  position: fixed;
+  z-index: 11;
+  right: 16px;
+  bottom: 16px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #30363d;
+  border-radius: 50%;
+  background: #161b22;
+  color: #8b949e;
+  cursor: help;
+}
+#help:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
+@media (max-width: 720px) {
+  #stats-panel { top: 8px; right: 8px; width: 190px; padding: 10px 12px; }
+  #legend-panel { bottom: 8px; left: 8px; padding: 10px 12px; }
+  #help { right: 8px; bottom: 8px; }
+  .s-name { width: 58px; }
+}
+</style>
+</head>
+<body>
+<svg id="svg" style="width:100vw;height:100vh;display:block" aria-label="베이지안 통계 개념 마인드맵"></svg>
+
+<section class="panel" id="stats-panel" aria-label="단계별 통과율">
+  <h3>단계별 통과율</h3>
+  <div id="stat-rows"></div>
+</section>
+
+<section class="panel" id="legend-panel" aria-label="학습 증거 상태">
+  <h4>학습 증거 상태</h4>
+  <div class="l-row"><span class="l-dot" style="background:#21262d;border:1px solid #484f58"></span>미평가</div>
+  <div class="l-row"><span class="l-dot" style="background:#d29922"></span>연습 중</div>
+  <div class="l-row"><span class="l-dot" style="background:#3fb950"></span>통과</div>
+  <div class="l-row"><span class="l-dot" style="background:#f85149"></span>재점검 필요</div>
+  <div class="l-divider"></div>
+  <div style="color:#8b949e;font-size:10px;line-height:1.8">
+    1 개념 · 2 수식 · 3 코드 · 4 적용
+  </div>
+</section>
+
+<button id="help" type="button" aria-label="사용법"
+  title="배경 드래그: 이동, 휠: 확대·축소, 노드: 펼치기, 점: 상태 변경">?</button>
+
+<script>
+const LEVELS = ["개념", "수식", "코드", "적용"];
+const COLORS = {
+  0: "#6e7681", 1: "#58a6ff", 2: "#3fb950", 3: "#d29922", 4: "#f0883e",
+  5: "#db6d28", 6: "#f85149", 7: "#da3633", 8: "#a371f7"
+};
+const STAGE_NAMES = {
+  0: "S0 기초", 1: "S1 확률", 2: "S2 추론", 3: "S3 근사", 4: "S4 MCMC",
+  5: "S5 회귀", 6: "S6 계층", 7: "S7 생존", 8: "S8 평가"
+};
+const STATUS_LABELS = ["미평가", "연습 중", "통과", "재점검 필요"];
+
+const DATA = { id: "root", name: "베이지안 통계학", s: 0, children: [
+  { id: "s0", name: "Stage 0. 환경과 수학", s: 0, children: [
+    { id: "s0_python", name: "Python 재현성", s: 0, children: [
+      { id: "s0_numpy", name: "NumPy · SciPy · pandas", s: 0, leaf: 1 },
+      { id: "s0_env", name: "환경 · 버전 · 난수 시드", s: 0, leaf: 1 }
+    ]},
+    { id: "s0_math", name: "미적분과 선형대수", s: 0, children: [
+      { id: "s0_calc", name: "적분 · gradient · Hessian", s: 0, leaf: 1 },
+      { id: "s0_taylor", name: "Taylor 전개", s: 0, leaf: 1 },
+      { id: "s0_linalg", name: "이차형식 · Cholesky · SVD", s: 0, leaf: 1 }
+    ]},
+    { id: "s0_numeric", name: "변수변환 · Jacobian · log-sum-exp", s: 0, leaf: 1 }
+  ]},
+  { id: "s1", name: "Stage 1. 확률변수와 분포", s: 1, children: [
+    { id: "s1_rv", name: "확률변수", s: 1, children: [
+      { id: "s1_pmf", name: "PMF · PDF · CDF", s: 1, leaf: 1 },
+      { id: "s1_moments", name: "기댓값 · 분산 · 공분산", s: 1, leaf: 1 }
+    ]},
+    { id: "s1_joint", name: "결합분포", s: 1, children: [
+      { id: "s1_conditional", name: "결합 · 주변 · 조건부분포", s: 1, leaf: 1 },
+      { id: "s1_independence", name: "독립성과 조건부 독립성", s: 1, leaf: 1 },
+      { id: "s1_condexp", name: "조건부기댓값", s: 1, leaf: 1 }
+    ]},
+    { id: "s1_bayes", name: "전확률 법칙과 베이즈 정리", s: 1, leaf: 1 },
+    { id: "s1_distributions", name: "주요 확률분포", s: 1, children: [
+      { id: "s1_discrete", name: "Bernoulli · Binomial · Categorical", s: 1, leaf: 1 },
+      { id: "s1_beta", name: "Beta · Dirichlet", s: 1, leaf: 1 },
+      { id: "s1_count", name: "Gamma · Poisson", s: 1, leaf: 1 },
+      { id: "s1_normal", name: "Normal · Multivariate Normal", s: 1, leaf: 1 }
+    ]},
+    { id: "s1_limits", name: "큰수의 법칙 · 중심극한정리", s: 1, leaf: 1 }
+  ]},
+  { id: "s2", name: "Stage 2. 베이지안 추론", s: 2, children: [
+    { id: "s2_model", name: "생성모형과 갱신", s: 2, children: [
+      { id: "s2_prior", name: "사전분포 p(θ)", s: 2, leaf: 1 },
+      { id: "s2_sampling", name: "표본모형 p(y|θ)", s: 2, leaf: 1 },
+      { id: "s2_likelihood", name: "우도 L(θ;y)", s: 2, leaf: 1 },
+      { id: "s2_posterior", name: "사후분포 p(θ|y)", s: 2, leaf: 1 },
+      { id: "s2_evidence", name: "주변우도 · 순차 갱신", s: 2, leaf: 1 }
+    ]},
+    { id: "s2_analytic", name: "해석적 추론", s: 2, children: [
+      { id: "s2_beta_binomial", name: "Beta-Binomial", s: 2, leaf: 1 },
+      { id: "s2_gamma_poisson", name: "Gamma-Poisson", s: 2, leaf: 1 },
+      { id: "s2_normal_normal", name: "Normal-Normal", s: 2, leaf: 1 },
+      { id: "s2_dirichlet", name: "Dirichlet-Multinomial", s: 2, leaf: 1 },
+      { id: "s2_expfamily", name: "충분통계 · 지수족 · 켤레성", s: 2, leaf: 1 }
+    ]},
+    { id: "s2_priors", name: "사전분포 설계", s: 2, children: [
+      { id: "s2_weakprior", name: "정보적 · 약정보적 · 비정보적", s: 2, leaf: 1 },
+      { id: "s2_jeffreys", name: "Jeffreys prior · 사후 적절성", s: 2, leaf: 1 },
+      { id: "s2_sensitivity", name: "사전민감도", s: 2, leaf: 1 }
+    ]},
+    { id: "s2_predictive", name: "사전예측 · 사후예측", s: 2, leaf: 1 },
+    { id: "s2_decision", name: "사후요약 · 손실함수 · Bayes action", s: 2, leaf: 1 }
+  ]},
+  { id: "s3", name: "Stage 3. 근사와 Monte Carlo", s: 3, children: [
+    { id: "s3_approx", name: "수치 근사", s: 3, children: [
+      { id: "s3_grid", name: "격자 근사 · 수치적분", s: 3, leaf: 1 },
+      { id: "s3_map", name: "MAP 최적화", s: 3, leaf: 1 },
+      { id: "s3_laplace", name: "라플라스 근사", s: 3, leaf: 1 }
+    ]},
+    { id: "s3_mc", name: "Monte Carlo", s: 3, children: [
+      { id: "s3_mcint", name: "Monte Carlo 적분 · MCSE", s: 3, leaf: 1 },
+      { id: "s3_importance", name: "중요도 샘플링", s: 3, leaf: 1 },
+      { id: "s3_vi", name: "선택: 변분추론", s: 3, leaf: 1 }
+    ]},
+    { id: "s3_simulation", name: "시뮬레이션 검증", s: 3, children: [
+      { id: "s3_fake", name: "가짜 데이터", s: 3, leaf: 1 },
+      { id: "s3_recovery", name: "모수 회복", s: 3, leaf: 1 },
+      { id: "s3_sbc", name: "Simulation-based calibration", s: 3, leaf: 1 }
+    ]}
+  ]},
+  { id: "s4", name: "Stage 4. MCMC와 PyMC", s: 4, children: [
+    { id: "s4_theory", name: "MCMC 원리", s: 4, children: [
+      { id: "s4_chain", name: "Markov chain · 정상분포 · 상세균형", s: 4, leaf: 1 },
+      { id: "s4_mh", name: "Metropolis-Hastings · Gibbs", s: 4, leaf: 1 },
+      { id: "s4_hmc", name: "HMC · NUTS", s: 4, leaf: 1 }
+    ]},
+    { id: "s4_tools", name: "PyMC 워크플로", s: 4, children: [
+      { id: "s4_pymc", name: "PyMC · ArviZ · InferenceData", s: 4, leaf: 1 },
+      { id: "s4_predictive", name: "사전예측 · 사후예측 샘플링", s: 4, leaf: 1 },
+      { id: "s4_repro", name: "결과 저장과 재현", s: 4, leaf: 1 }
+    ]},
+    { id: "s4_diagnostics", name: "계산 진단과 수정", s: 4, children: [
+      { id: "s4_rhat", name: "rank-normalized split R-hat", s: 4, leaf: 1 },
+      { id: "s4_ess", name: "bulk/tail ESS · MCSE", s: 4, leaf: 1 },
+      { id: "s4_divergence", name: "divergence · BFMI · treedepth", s: 4, leaf: 1 },
+      { id: "s4_reparam", name: "재매개화 · 스케일 조정", s: 4, leaf: 1 }
+    ]}
+  ]},
+  { id: "s5", name: "Stage 5. 베이지안 회귀", s: 5, children: [
+    { id: "s5_structure", name: "회귀의 공통 구조", s: 5, children: [
+      { id: "s5_glm", name: "생성모형 · 선형예측자 · link", s: 5, leaf: 1 },
+      { id: "s5_prior", name: "표준화 · 약정보적 사전분포", s: 5, leaf: 1 },
+      { id: "s5_identify", name: "식별가능성 · 공선성 · 완전분리", s: 5, leaf: 1 },
+      { id: "s5_interaction", name: "상호작용 · 비선형 효과", s: 5, leaf: 1 }
+    ]},
+    { id: "s5_models", name: "회귀모형", s: 5, children: [
+      { id: "s5_gaussian", name: "Gaussian 선형회귀", s: 5, leaf: 1 },
+      { id: "s5_logistic", name: "Bernoulli 로지스틱회귀", s: 5, leaf: 1 },
+      { id: "s5_counts", name: "Poisson · Negative Binomial", s: 5, leaf: 1 },
+      { id: "s5_zero", name: "과산포 · zero inflation", s: 5, leaf: 1 }
+    ]},
+    { id: "s5_checks", name: "모수 회복 · 예측검사 · 보정 · 영향점", s: 5, leaf: 1 }
+  ]},
+  { id: "s6", name: "Stage 6. 계층모형", s: 6, children: [
+    { id: "s6_pooling", name: "부분 풀링", s: 6, children: [
+      { id: "s6_compare", name: "완전 풀링 · 비풀링 · 부분 풀링", s: 6, leaf: 1 },
+      { id: "s6_exchange", name: "교환가능성 · hyperprior · shrinkage", s: 6, leaf: 1 },
+      { id: "s6_newgroup", name: "기존 그룹 · 새로운 그룹 예측", s: 6, leaf: 1 }
+    ]},
+    { id: "s6_multilevel", name: "다층 회귀", s: 6, children: [
+      { id: "s6_varying", name: "varying intercepts · slopes", s: 6, leaf: 1 },
+      { id: "s6_lkj", name: "그룹 효과 상관 · LKJ prior", s: 6, leaf: 1 },
+      { id: "s6_funnel", name: "centered · non-centered · funnel", s: 6, leaf: 1 }
+    ]},
+    { id: "s6_labor", name: "지역 · 산업별 노동시장 다층모형", s: 6, leaf: 1 }
+  ]},
+  { id: "s7", name: "Stage 7. 베이지안 생존분석", s: 7, children: [
+    { id: "s7_observation", name: "관측과정과 우도", s: 7, children: [
+      { id: "s7_functions", name: "생존 · 위험 · 누적위험함수", s: 7, leaf: 1 },
+      { id: "s7_censored", name: "censored likelihood", s: 7, leaf: 1 },
+      { id: "s7_censoring", name: "독립적 · 정보적 중도절단", s: 7, leaf: 1 },
+      { id: "s7_competing", name: "truncation · competing risks", s: 7, leaf: 1 }
+    ]},
+    { id: "s7_models", name: "생존모형", s: 7, children: [
+      { id: "s7_parametric", name: "Exponential · Weibull", s: 7, leaf: 1 },
+      { id: "s7_piecewise", name: "piecewise exponential · Cox", s: 7, leaf: 1 },
+      { id: "s7_frailty", name: "시간가변 공변량 · 계층 frailty", s: 7, leaf: 1 }
+    ]},
+    { id: "s7_labor", name: "실업기간 · 경쟁사건 · 예측검사", s: 7, leaf: 1 }
+  ]},
+  { id: "s8", name: "Stage 8. 평가와 캡스톤", s: 8, children: [
+    { id: "s8_evaluation", name: "예측 평가와 모델 비교", s: 8, children: [
+      { id: "s8_elpd", name: "log predictive density · ELPD", s: 8, leaf: 1 },
+      { id: "s8_loo", name: "PSIS-LOO · Pareto-k", s: 8, leaf: 1 },
+      { id: "s8_cv", name: "K-fold · grouped/time validation", s: 8, leaf: 1 },
+      { id: "s8_stacking", name: "stacking · model averaging", s: 8, leaf: 1 },
+      { id: "s8_bf", name: "Bayes factor의 목적과 한계", s: 8, leaf: 1 }
+    ]},
+    { id: "s8_decision", name: "베이지안 의사결정", s: 8, children: [
+      { id: "s8_loss", name: "행동 · 손실 · 효용", s: 8, leaf: 1 },
+      { id: "s8_expectedloss", name: "사후기대손실 · 최적 행동", s: 8, leaf: 1 },
+      { id: "s8_voi", name: "정보가치", s: 8, leaf: 1 }
+    ]},
+    { id: "s8_capstone", name: "노동시장 캡스톤", s: 8, children: [
+      { id: "s8_estimand", name: "estimand · 데이터 사전 · 결측", s: 8, leaf: 1 },
+      { id: "s8_bias", name: "선택편향 · 시간누수 · 공정성", s: 8, leaf: 1 },
+      { id: "s8_report", name: "재현 보고서 · 코드 리뷰 · 발표", s: 8, leaf: 1 }
+    ]}
+  ]}
+]};
+
+const DEPENDENCIES = [
+  ["s1_conditional", "s1_bayes"],
+  ["s1_distributions", "s2_model"],
+  ["s0_calc", "s3_laplace"],
+  ["s0_taylor", "s3_laplace"],
+  ["s1_limits", "s3_mcint"],
+  ["s2_prior", "s2_predictive"],
+  ["s5_identify", "s4_reparam"],
+  ["s4_diagnostics", "s4_reparam"],
+  ["s2_decision", "s8_decision"],
+  ["s6_multilevel", "s7_frailty"]
+];
+
+function normalizeStatus(value) {
+  if (value === true) return 2;
+  if (value === false || value == null) return 0;
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 && number <= 3 ? number : 0;
+}
+
+function getProgress(id) {
+  try {
+    return JSON.parse(localStorage.getItem("bsm_" + id)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function getStatus(id, level) {
+  return normalizeStatus(getProgress(id)[level]);
+}
+
+function cycleStatus(id, level) {
+  const progress = getProgress(id);
+  const next = (normalizeStatus(progress[level]) + 1) % STATUS_LABELS.length;
+  progress[level] = next;
+  localStorage.setItem("bsm_" + id, JSON.stringify(progress));
+  return next;
+}
+
+function statusFill(status, stage) {
+  if (status === 1) return "#d29922";
+  if (status === 2) return COLORS[stage];
+  if (status === 3) return "#f85149";
+  return "#21262d";
+}
+
+function passedCount(id) {
+  return LEVELS.filter(level => getStatus(id, level) === 2).length;
+}
+
+function getLeaves(stage) {
+  const result = [];
+  function walk(node) {
+    if (node.leaf && node.s === stage) result.push(node);
+    if (node.children) node.children.forEach(walk);
+  }
+  walk(DATA);
+  return result;
+}
+
+function subtreeCount(node) {
+  let passed = 0;
+  let total = 0;
+  function walk(current) {
+    if (current.leaf) {
+      passed += passedCount(current.id);
+      total += LEVELS.length;
+    }
+    if (current.children) current.children.forEach(walk);
+  }
+  walk(node);
+  return [passed, total];
+}
+
+const svg = d3.select("#svg");
+const graph = svg.append("g");
+const zoom = d3.zoom()
+  .scaleExtent([0.15, 3])
+  .on("zoom", event => graph.attr("transform", event.transform));
+svg.call(zoom);
+
+function resetView() {
+  svg.call(
+    zoom.transform,
+    d3.zoomIdentity.translate(Math.min(210, window.innerWidth * 0.22), window.innerHeight / 2).scale(0.72)
+  );
+}
+resetView();
+
+const treeLayout = d3.tree().nodeSize([58, 276]).separation((a, b) => a.parent === b.parent ? 1 : 1.25);
+const root = d3.hierarchy(DATA);
+root.each(node => {
+  if (node.depth >= 2 && node.children) {
+    node._children = node.children;
+    node.children = null;
+  }
+});
+root.x0 = 0;
+root.y0 = 0;
+
+const NODE_WIDTH = 224;
+const NODE_HEIGHT = 34;
+const LEAF_HEIGHT = 52;
+const DOT_RADIUS = 5;
+const DOT_GAP = 17;
+
+function toggle(node) {
+  if (node.children) {
+    node._children = node.children;
+    node.children = null;
+  } else {
+    node.children = node._children;
+    node._children = null;
+  }
+}
+
+function visibleDependencies(nodes) {
+  const byId = new Map(nodes.map(node => [node.data.id, node]));
+  return DEPENDENCIES
+    .map(([from, to]) => ({ key: from + "-" + to, source: byId.get(from), target: byId.get(to) }))
+    .filter(edge => edge.source && edge.target);
+}
+
+function shortened(text) {
+  return text.length > 30 ? text.slice(0, 29) + "…" : text;
+}
+
+function update(source) {
+  treeLayout(root);
+  const nodes = root.descendants();
+  const links = root.links();
+
+  const dependencies = graph.selectAll("path.dependency")
+    .data(visibleDependencies(nodes), edge => edge.key);
+  dependencies.enter()
+    .append("path")
+    .attr("class", "dependency")
+    .merge(dependencies)
+    .attr("d", edge => {
+      const sx = edge.source.y + NODE_WIDTH;
+      const sy = edge.source.x;
+      const tx = edge.target.y;
+      const ty = edge.target.x;
+      return `M${sx},${sy}C${(sx + tx) / 2},${sy} ${(sx + tx) / 2},${ty} ${tx},${ty}`;
+    });
+  dependencies.exit().remove();
+  graph.selectAll("path.dependency").lower();
+
+  const link = graph.selectAll("path.link").data(links, edge => edge.target.data.id);
+  link.enter()
+    .append("path")
+    .attr("class", "link")
+    .attr("d", `M${source.y0 || 0},${source.x0 || 0}L${source.y0 || 0},${source.x0 || 0}`)
+    .merge(link)
+    .transition()
+    .duration(250)
+    .attr("stroke", edge => COLORS[edge.target.data.s] + "70")
+    .attr("stroke-width", 1.5)
+    .attr("d", edge => {
+      const sx = edge.source.y + NODE_WIDTH;
+      const sy = edge.source.x;
+      const tx = edge.target.y;
+      const ty = edge.target.x;
+      return `M${sx},${sy}C${(sx + tx) / 2},${sy} ${(sx + tx) / 2},${ty} ${tx},${ty}`;
+    });
+  link.exit().transition().duration(250).remove();
+
+  const selection = graph.selectAll("g.node").data(nodes, node => node.data.id);
+  const enter = selection.enter()
+    .append("g")
+    .attr("class", "node")
+    .attr("transform", `translate(${source.y0 || 0},${source.x0 || 0})`)
+    .style("opacity", 0);
+
+  enter.append("rect")
+    .attr("x", 0)
+    .attr("y", node => node.data.leaf ? -LEAF_HEIGHT / 2 : -NODE_HEIGHT / 2)
+    .attr("width", NODE_WIDTH)
+    .attr("height", node => node.data.leaf ? LEAF_HEIGHT : NODE_HEIGHT)
+    .attr("rx", 7)
+    .attr("fill", node => COLORS[node.data.s] + "18")
+    .attr("stroke", node => COLORS[node.data.s] + "90")
+    .attr("stroke-width", 1.5)
+    .style("cursor", node => node.children || node._children ? "pointer" : "default")
+    .on("click", (_, node) => {
+      if (node.children || node._children) {
+        toggle(node);
+        update(node);
+      }
+    });
+
+  const label = enter.append("text")
+    .attr("class", "label")
+    .attr("x", 10)
+    .attr("y", node => node.data.leaf ? -10 : node.depth > 0 ? -3 : 5)
+    .attr("fill", node => COLORS[node.data.s])
+    .attr("font-size", node => node.depth === 0 ? 15 : 11.5)
+    .attr("font-weight", node => node.depth <= 1 ? 600 : 400)
+    .style("cursor", node => node.children || node._children ? "pointer" : "default")
+    .text(node => shortened(node.data.name))
+    .on("click", (event, node) => {
+      event.stopPropagation();
+      if (node.children || node._children) {
+        toggle(node);
+        update(node);
+      }
+    });
+  label.append("title").text(node => node.data.name);
+
+  enter.filter(node => !node.data.leaf && node.depth > 0)
+    .append("text")
+    .attr("class", "count")
+    .attr("x", 10)
+    .attr("y", 13)
+    .attr("font-size", 10)
+    .attr("fill", "#8b949e");
+
+  enter.filter(node => !node.data.leaf)
+    .append("text")
+    .attr("class", "arrow")
+    .attr("x", NODE_WIDTH - 17)
+    .attr("y", 5)
+    .attr("font-size", 11)
+    .attr("fill", "#8b949e")
+    .style("cursor", "pointer")
+    .on("click", (event, node) => {
+      event.stopPropagation();
+      toggle(node);
+      update(node);
+    });
+
+  enter.filter(node => node.data.leaf).each(function(node) {
+    const leaf = d3.select(this);
+    LEVELS.forEach((level, index) => {
+      const circle = leaf.append("circle")
+        .datum({ level, id: node.data.id, stage: node.data.s, index })
+        .attr("class", "progress-dot")
+        .attr("cx", 10 + DOT_RADIUS + index * DOT_GAP)
+        .attr("cy", 15)
+        .attr("r", DOT_RADIUS)
+        .attr("fill", statusFill(getStatus(node.data.id, level), node.data.s))
+        .attr("stroke", COLORS[node.data.s])
+        .attr("stroke-width", 1)
+        .style("cursor", "pointer")
+        .on("click", (event, dot) => {
+          event.stopPropagation();
+          const status = cycleStatus(dot.id, dot.level);
+          d3.select(event.currentTarget).attr("fill", statusFill(status, dot.stage));
+          d3.select(event.currentTarget).select("title")
+            .text(`${dot.index + 1}. ${dot.level}: ${STATUS_LABELS[status]}`);
+          updateCounts();
+          updateStats();
+        });
+      circle.append("title")
+        .text(`${index + 1}. ${level}: ${STATUS_LABELS[getStatus(node.data.id, level)]}`);
+    });
+  });
+
+  const merged = selection.merge(enter);
+  merged.transition()
+    .duration(250)
+    .attr("transform", node => `translate(${node.y},${node.x})`)
+    .style("opacity", 1);
+
+  merged.select(".arrow").text(node => node.children ? "▾" : node._children ? "▸" : "");
+  merged.select(".count").text(node => {
+    if (!node.data || node.data.leaf) return "";
+    const [passed, total] = subtreeCount(node.data);
+    return total ? `${passed}/${total} 통과` : "";
+  });
+  merged.selectAll(".progress-dot").attr("fill", function() {
+    const dot = d3.select(this).datum();
+    return statusFill(getStatus(dot.id, dot.level), dot.stage);
+  });
+
+  selection.exit()
+    .transition()
+    .duration(250)
+    .attr("transform", `translate(${source.y},${source.x})`)
+    .style("opacity", 0)
+    .remove();
+
+  nodes.forEach(node => {
+    node.x0 = node.x;
+    node.y0 = node.y;
+  });
+}
+
+function updateCounts() {
+  graph.selectAll("g.node").select(".count").text(node => {
+    if (!node.data || node.data.leaf || node.depth === 0) return "";
+    const [passed, total] = subtreeCount(node.data);
+    return total ? `${passed}/${total} 통과` : "";
+  });
+}
+
+function updateStats() {
+  document.getElementById("stat-rows").innerHTML = d3.range(0, 9).map(stage => {
+    const leaves = getLeaves(stage);
+    const total = leaves.length * LEVELS.length;
+    const passed = leaves.reduce((sum, node) => sum + passedCount(node.id), 0);
+    const percentage = total ? Math.round(passed / total * 100) : 0;
+    return `<div class="s-row">
+      <span class="s-name">${STAGE_NAMES[stage]}</span>
+      <div class="s-bar-bg"><div class="s-bar" style="width:${percentage}%;background:${COLORS[stage]}"></div></div>
+      <span class="s-pct" style="color:${COLORS[stage]}">${percentage}%</span>
+    </div>`;
+  }).join("");
+}
+
+window.addEventListener("resize", resetView);
+update(root);
+updateStats();
+</script>
+</body>
+</html>
