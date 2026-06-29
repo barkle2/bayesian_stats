@@ -165,6 +165,7 @@ Stage 2부터 모든 모델은 다음 순서를 반복합니다.
 
 ### 2.5 실습 산출물
 
+- [x] 2강 대화형 본강의: 생성모형과 우도
 - [ ] `stage_02_inference/01_grid_update.ipynb`
 - [ ] `stage_02_inference/02_conjugate_models.ipynb`
 - [ ] `stage_02_inference/03_predictive_checks.ipynb`
